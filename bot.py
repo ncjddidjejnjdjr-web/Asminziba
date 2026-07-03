@@ -12,6 +12,9 @@ import requests
 
 # ========== تنظیمات ==========
 TOKEN = os.environ.get("BOT_TOKEN")
+if not TOKEN:
+    raise ValueError("❌ BOT_TOKEN environment variable is not set!")
+
 PORT = int(os.environ.get("PORT", 10000))
 RENDER_URL = os.environ.get("RENDER_EXTERNAL_URL", "https://your-app-name.onrender.com")
 
@@ -53,7 +56,7 @@ RESPONSES = {
         "می‌تونم باهات چت کنم! سوال بپرس. 🤖",
         "تخصص من گفتگوه! بپرس تا جواب بدم. 💬",
     ],
-    r"\bعشق\b|\bدوستت دارم\b|\bدوس\b": [
+    r"\bعشق\b|\bدوستت دارم\b|\bدوس\b|\bدوست دارم\b": [
         "آها! ممنون! منم دوستت دارم! ❤️",
         "چه لطفی! منم بهت علاقه‌مندم! 💖",
         "خوشحالم که اینو گفتی! 🥰",
@@ -81,11 +84,7 @@ HTML_PAGE = """
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>ربات تلگرام</title>
     <style>
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
-        }
+        * { margin: 0; padding: 0; box-sizing: border-box; }
         body {
             font-family: 'Vazir', Tahoma, Arial, sans-serif;
             text-align: center;
@@ -104,22 +103,9 @@ HTML_PAGE = """
             width: 100%;
             box-shadow: 0 20px 60px rgba(0,0,0,0.3);
         }
-        h1 {
-            color: #2c3e50;
-            margin-bottom: 20px;
-            font-size: 2.5em;
-        }
-        .emoji-big {
-            font-size: 4em;
-            display: block;
-            margin-bottom: 20px;
-        }
-        p {
-            color: #34495e;
-            font-size: 1.1em;
-            line-height: 1.8;
-            margin: 15px 0;
-        }
+        h1 { color: #2c3e50; margin-bottom: 20px; font-size: 2.5em; }
+        .emoji-big { font-size: 4em; display: block; margin-bottom: 20px; }
+        p { color: #34495e; font-size: 1.1em; line-height: 1.8; margin: 15px 0; }
         .status {
             background: #27ae60;
             color: white;
@@ -147,14 +133,8 @@ HTML_PAGE = """
             padding: 8px 0;
             border-bottom: 1px solid #e9ecef;
         }
-        .info li:last-child {
-            border-bottom: none;
-        }
-        .footer {
-            margin-top: 30px;
-            color: #6c757d;
-            font-size: 0.9em;
-        }
+        .info li:last-child { border-bottom: none; }
+        .footer { margin-top: 30px; color: #6c757d; font-size: 0.9em; }
         .badge {
             background: #e74c3c;
             color: white;
@@ -217,9 +197,7 @@ def ping_self():
     while True:
         time.sleep(300)  # ۵ دقیقه
         try:
-            # درخواست به آدرس محلی
             requests.get(f"http://localhost:{PORT}/ping", timeout=10)
-            # درخواست به آدرس عمومی (اگر در Render باشد)
             if RENDER_URL and "your-app-name" not in RENDER_URL:
                 requests.get(f"{RENDER_URL}/ping", timeout=10)
             logging.info("✅ Ping sent successfully")
@@ -259,11 +237,9 @@ async def handle_message(update: Update, context: ContextTypes.DEFAULT_TYPE):
     user_text = update.message.text
     
     # ===== انیمیشن پردازش (۶ ثانیه) =====
-    # پیام اولیه با یک نقطه
     msg = await update.message.reply_text("در حال پردازش.")
     
-    # به‌روزرسانی هر ثانیه با اضافه کردن نقطه
-    for i in range(2, 7):  # از ۲ تا ۶ (چون اولی یک نقطه داشت)
+    for i in range(2, 7):
         await asyncio.sleep(1)
         dots = "." * i
         await msg.edit_text(f"در حال پردازش{dots}")
@@ -279,26 +255,12 @@ async def unknown(update: Update, context: ContextTypes.DEFAULT_TYPE):
         "برای راهنمایی /start رو بزن."
     )
 
-# ========== اجرای اصلی ==========
-def main():
-    # تنظیم لاگ
-    logging.basicConfig(
-        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-        level=logging.INFO
-    )
-    logging.info("🚀 Starting bot...")
+# ========== تابع اصلی با مدیریت صحیح event loop ==========
+async def run_bot():
+    """اجرای ربات با event loop مناسب"""
+    logging.info("🤖 Initializing bot...")
     
-    # اجرای Flask در ترد جداگانه
-    flask_thread = threading.Thread(target=run_flask, daemon=True)
-    flask_thread.start()
-    logging.info(f"🌐 Flask server started on port {PORT}")
-    
-    # اجرای پینگ در ترد جداگانه
-    ping_thread = threading.Thread(target=ping_self, daemon=True)
-    ping_thread.start()
-    logging.info("⏰ Ping thread started")
-    
-    # راه‌اندازی ربات تلگرام با نسخه جدید
+    # ساخت اپلیکیشن
     application = (
         Application.builder()
         .token(TOKEN)
@@ -314,13 +276,60 @@ def main():
     
     logging.info("🤖 Bot started polling...")
     
-    # شروع polling با تنظیمات مناسب
-    application.run_polling(
+    # شروع polling به صورت async
+    await application.initialize()
+    await application.start()
+    
+    # شروع polling
+    await application.updater.start_polling(
         allowed_updates=Update.ALL_TYPES,
         drop_pending_updates=True,
         poll_interval=1.0,
         timeout=30
     )
+    
+    # نگه داشتن ربات در حال اجرا
+    try:
+        while True:
+            await asyncio.sleep(1)
+    except KeyboardInterrupt:
+        logging.info("Shutting down...")
+        await application.updater.stop()
+        await application.stop()
+        await application.shutdown()
+
+# ========== اجرای اصلی ==========
+def main():
+    # تنظیم لاگ
+    logging.basicConfig(
+        format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
+        level=logging.INFO
+    )
+    
+    if not TOKEN:
+        logging.error("❌ BOT_TOKEN environment variable is not set!")
+        return
+    
+    logging.info("🚀 Starting bot...")
+    
+    # اجرای Flask در ترد جداگانه
+    flask_thread = threading.Thread(target=run_flask, daemon=True)
+    flask_thread.start()
+    logging.info(f"🌐 Flask server started on port {PORT}")
+    
+    # اجرای پینگ در ترد جداگانه
+    ping_thread = threading.Thread(target=ping_self, daemon=True)
+    ping_thread.start()
+    logging.info("⏰ Ping thread started")
+    
+    # اجرای ربات با event loop جدید
+    try:
+        asyncio.run(run_bot())
+    except KeyboardInterrupt:
+        logging.info("Bot stopped by user")
+    except Exception as e:
+        logging.error(f"❌ Bot error: {e}")
+        raise
 
 if __name__ == "__main__":
     main()
